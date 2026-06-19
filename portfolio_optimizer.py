@@ -12,7 +12,6 @@ Edit the USER CONFIG section below, then run:
     python portfolio_optimizer.py
 """
 
-import html
 import itertools
 import json
 import math
@@ -39,7 +38,7 @@ min_weights = {
     "USLCAP3x": 0.00,
     "LTT3x": 0.00,
     "ITT3x": 0.00,
-    "GOLDPM2x": 0.00,
+    "GOLDPM2x": 0.20,
     "COMM": 0.00,
 }
 
@@ -281,8 +280,8 @@ def format_existing_script_syntax(row, tickers):
 
 def write_interactive_scatter(results, tickers, path):
     """Write a dependency-free HTML/SVG scatter with selectable axes."""
-    width, height = 1100, 640
-    left, right, top, bottom = 90, 40, 35, 100
+    width, height = 1100, 560
+    left, right, top, bottom = 90, 40, 35, 90
     plot_w, plot_h = width - left - right, height - top - bottom
 
     numeric_columns = [
@@ -302,26 +301,14 @@ def write_interactive_scatter(results, tickers, path):
     chart_data = json.dumps(chart_rows, allow_nan=False)
     column_data = json.dumps(numeric_columns)
     percent_column_data = json.dumps(percent_columns)
-
-    top_rows = results.head(10).copy()
-    top_rows["Portfolio"] = top_rows.apply(lambda row: format_weight_label(row, tickers), axis=1)
-    table_rows = []
-    for _, row in top_rows.iterrows():
-        table_rows.append(
-            "<tr>"
-            f"<td>{html.escape(row['Portfolio'])}</td>"
-            f"<td>{row['CAGR']:.2%}</td>"
-            f"<td>{row['Max Drawdown']:.2%}</td>"
-            f"<td>{row['Sharpe']:.2f}</td>"
-            f"<td>{row['Ulcer Index']:.2f}</td>"
-            "</tr>"
-        )
+    weight_column_data = json.dumps([f"{ticker} Weight" for ticker in tickers])
+    ticker_data = json.dumps(list(tickers))
 
     doc = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>CAGR vs Max Drawdown</title>
+<title>Portfolio Optimisation Results</title>
 <style>
 body {{ font-family: Arial, sans-serif; margin: 24px; color: #111827; }}
 h1 {{ font-size: 22px; margin: 0 0 4px; }}
@@ -338,7 +325,7 @@ select {{
     color: #111827;
     font-size: 14px;
 }}
-svg {{ max-width: 100%; height: auto; border: 1px solid #d1d5db; background: white; }}
+svg {{ display: block; margin: 0 auto; width: 100%; max-width: 1520px; height: auto; border: 1px solid #d1d5db; background: white; }}
 circle:hover {{ opacity: 1; }}
 #tooltip, #pinned-tooltip {{
     position: fixed;
@@ -357,19 +344,95 @@ circle:hover {{ opacity: 1; }}
     z-index: 10;
 }}
 #pinned-tooltip {{
+    position: absolute;
     border-color: #7c3aed;
     box-shadow: 0 8px 24px rgba(124, 58, 237, 0.22);
     z-index: 9;
 }}
-table {{ border-collapse: collapse; margin-top: 22px; font-size: 13px; }}
-th, td {{ border: 1px solid #d1d5db; padding: 7px 9px; text-align: right; }}
+.table-controls {{ display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 26px 0 10px; }}
+.table-controls input[type="text"] {{
+    min-width: 280px;
+    padding: 7px 9px;
+    border: 1px solid #9ca3af;
+    border-radius: 6px;
+    font-size: 14px;
+}}
+.table-controls .toggle {{ display: flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; }}
+.table-controls .toggle label {{ font-size: 13px; text-transform: none; font-weight: 400; color: #374151; }}
+#row-count {{ font-size: 13px; color: #6b7280; margin-left: auto; }}
+.filter-builder {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; }}
+.filter-builder .fb-label {{ font-size: 12px; font-weight: 700; text-transform: uppercase; color: #4b5563; }}
+.filter-builder select, .filter-builder input {{
+    padding: 6px 8px;
+    border: 1px solid #9ca3af;
+    border-radius: 6px;
+    font-size: 13px;
+    background: white;
+}}
+.filter-builder #filter-column {{ min-width: 170px; }}
+.filter-builder #filter-op {{ min-width: 52px; }}
+.filter-builder #filter-value {{ width: 110px; }}
+.filter-builder .fb-hint {{ font-size: 12px; color: #6b7280; }}
+.filter-builder button {{
+    padding: 6px 12px;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    background: #2563eb;
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+}}
+.filter-builder button:hover {{ background: #1d4ed8; }}
+.filter-builder .fb-clear {{ background: white; color: #4b5563; border-color: #9ca3af; }}
+.filter-builder .fb-clear:hover {{ background: #f3f4f6; }}
+.filter-chips {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }}
+.filter-chips:empty {{ margin: 0; }}
+.chip {{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px 4px 10px;
+    border: 1px solid #c7d2fe;
+    border-radius: 14px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 12px;
+}}
+.chip button {{
+    border: none;
+    background: #c7d2fe;
+    color: #3730a3;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    line-height: 1;
+    cursor: pointer;
+    font-size: 12px;
+}}
+.chip button:hover {{ background: #a5b4fc; }}
+#table-wrap {{ max-height: 460px; overflow: auto; border: 1px solid #d1d5db; border-radius: 6px; }}
+table {{ border-collapse: collapse; font-size: 13px; width: 100%; }}
+th, td {{ border-bottom: 1px solid #e5e7eb; padding: 7px 10px; text-align: right; white-space: nowrap; }}
 th:first-child, td:first-child {{ text-align: left; }}
-th {{ background: #f3f4f6; }}
+th {{
+    background: #f3f4f6;
+    position: sticky;
+    top: 0;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1;
+}}
+th:hover {{ background: #e5e7eb; }}
+th .arrow {{ color: #2563eb; font-size: 11px; }}
+tbody tr {{ cursor: pointer; }}
+tbody tr:nth-child(even) {{ background: #fafafa; }}
+tbody tr:hover {{ background: #eef2ff; }}
+tbody tr.row-selected, tbody tr.row-selected:hover {{ background: #ede9fe; box-shadow: inset 3px 0 0 #7c3aed; }}
 </style>
 </head>
 <body>
-<h1>CAGR vs Max Drawdown</h1>
-<p>Pick any numeric result columns for the axes. Hover a dot to identify the portfolio weights and core statistics.</p>
+<h1>Portfolio Optimisation Results</h1>
+<p>Pick any numeric result columns for the axes. Hover a dot for its weights and core statistics, or click to pin it. Pinned dots highlight their row in the table below; click a table row to pin its dot.</p>
 <div class="controls">
     <div class="control">
         <label for="x-select">X Axis</label>
@@ -386,7 +449,7 @@ th {{ background: #f3f4f6; }}
 </div>
 <div id="tooltip"></div>
 <div id="pinned-tooltip"></div>
-<svg viewBox="0 0 {width} {height}" role="img" aria-label="CAGR versus max drawdown scatter plot">
+<svg viewBox="0 0 {width} {height}" role="img" aria-label="Portfolio metric scatter plot with selectable axes">
 <line x1="{left}" y1="{top + plot_h}" x2="{left + plot_w}" y2="{top + plot_h}" stroke="#111827"/>
 <line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_h}" stroke="#111827"/>
 <g id="grid-layer"></g>
@@ -394,15 +457,37 @@ th {{ background: #f3f4f6; }}
 <text id="x-axis-label" x="{left + plot_w / 2:.0f}" y="{height - 30}" text-anchor="middle">Max Drawdown</text>
 <text id="y-axis-label" x="22" y="{top + plot_h / 2:.0f}" transform="rotate(-90 22 {top + plot_h / 2:.0f})" text-anchor="middle">CAGR</text>
 </svg>
-<table>
-<thead><tr><th>Portfolio</th><th>CAGR</th><th>Max Drawdown</th><th>Sharpe</th><th>Ulcer Index</th></tr></thead>
-<tbody>{''.join(table_rows)}</tbody>
+<div class="table-controls">
+    <input type="text" id="table-filter" placeholder="Filter portfolios… (e.g. GLD, 60%)" autocomplete="off">
+    <span class="toggle"><input type="checkbox" id="show-all-cols"><label for="show-all-cols">Show all columns</label></span>
+    <span id="row-count"></span>
+</div>
+<div class="filter-builder">
+    <span class="fb-label">Add metric filter</span>
+    <select id="filter-column"></select>
+    <select id="filter-op">
+        <option value="ge">&ge;</option>
+        <option value="le">&le;</option>
+    </select>
+    <input type="number" id="filter-value" step="any" placeholder="value">
+    <span id="filter-hint" class="fb-hint"></span>
+    <button id="filter-add" type="button">Add filter</button>
+    <button id="filter-clear" type="button" class="fb-clear">Clear all</button>
+</div>
+<div id="filter-chips" class="filter-chips"></div>
+<div id="table-wrap">
+<table id="results-table">
+<thead><tr id="table-head-row"></tr></thead>
+<tbody id="table-body"></tbody>
 </table>
+</div>
 <script>
 (() => {{
 const chartData = {chart_data};
 const numericColumns = {column_data};
 const percentColumns = new Set({percent_column_data});
+const weightColumns = {weight_column_data};
+const tickers = {ticker_data};
 const width = {width};
 const height = {height};
 const left = {left};
@@ -419,7 +504,28 @@ const xAxisLabel = document.getElementById("x-axis-label");
 const yAxisLabel = document.getElementById("y-axis-label");
 const hoverTooltip = document.getElementById("tooltip");
 const pinnedTooltip = document.getElementById("pinned-tooltip");
+const tableFilter = document.getElementById("table-filter");
+const showAllCols = document.getElementById("show-all-cols");
+const rowCount = document.getElementById("row-count");
+const tableHeadRow = document.getElementById("table-head-row");
+const tableBody = document.getElementById("table-body");
+const filterColumn = document.getElementById("filter-column");
+const filterOp = document.getElementById("filter-op");
+const filterValue = document.getElementById("filter-value");
+const filterHint = document.getElementById("filter-hint");
+const filterAdd = document.getElementById("filter-add");
+const filterClear = document.getElementById("filter-clear");
+const filterChips = document.getElementById("filter-chips");
 let pinnedDot = null;
+let pinnedRank = null;
+const activeFilters = [];
+
+const coreColumns = ["Rank"].concat(weightColumns,
+    ["CAGR", "Max Drawdown", "Sharpe", "Sortino", "Calmar", "Ulcer Index", "Final Value"]);
+const allColumns = ["Rank", "Portfolio"].concat(
+    numericColumns.filter((column) => column !== "Rank"));
+let sortColumn = "Rank";
+let sortAscending = true;
 
 numericColumns.forEach((column) => {{
     xSelect.add(new Option(column, column));
@@ -433,8 +539,24 @@ xSelect.addEventListener("change", () => {{
 }});
 ySelect.addEventListener("change", renderChart);
 thresholdSelect.addEventListener("change", renderChart);
+tableFilter.addEventListener("input", renderTable);
+showAllCols.addEventListener("change", renderTable);
+
+numericColumns.forEach((column) => filterColumn.add(new Option(column, column)));
+if (numericColumns.includes("Max Drawdown")) filterColumn.value = "Max Drawdown";
+filterColumn.addEventListener("change", updateFilterHint);
+filterValue.addEventListener("keydown", (event) => {{ if (event.key === "Enter") addFilter(); }});
+filterAdd.addEventListener("click", addFilter);
+filterClear.addEventListener("click", () => {{
+    activeFilters.length = 0;
+    renderFilters();
+    renderTable();
+}});
+updateFilterHint();
+
 updateThresholdOptions();
 renderChart();
+renderTable();
 
 function renderChart() {{
     const xColumn = xSelect.value;
@@ -484,11 +606,22 @@ function renderChart() {{
         dot.setAttribute("opacity", "0.62");
         dot.dataset.baseColor = baseColor;
         dot.dataset.tooltip = tooltipText;
+        dot.dataset.rank = row.Rank;
         dot.addEventListener("mouseenter", showHoverTooltip);
         dot.addEventListener("mousemove", moveHoverTooltip);
         dot.addEventListener("mouseleave", hideHoverTooltip);
         dot.addEventListener("click", togglePinnedTooltip);
         dotsLayer.appendChild(dot);
+    }}
+
+    if (pinnedRank !== null) {{
+        const dot = dotsLayer.querySelector(`circle[data-rank="${{pinnedRank}}"]`);
+        if (dot) {{
+            const r = dot.getBoundingClientRect();
+            setPin(dot, r.left + r.width / 2, r.top, false);
+        }} else {{
+            hidePinnedTooltip();
+        }}
     }}
 }}
 
@@ -608,40 +741,242 @@ function hidePinnedTooltip() {{
 function togglePinnedTooltip(event) {{
     const dot = event.currentTarget;
     if (pinnedDot === dot) {{
-        pinnedDot.setAttribute("fill", pinnedDot.dataset.baseColor);
-        pinnedDot.setAttribute("opacity", "0.62");
-        pinnedDot = null;
-        hidePinnedTooltip();
+        clearPin();
         return;
     }}
-
-    if (pinnedDot) {{
-        pinnedDot.setAttribute("fill", pinnedDot.dataset.baseColor);
-        pinnedDot.setAttribute("opacity", "0.62");
-    }}
-    pinnedDot = dot;
-    dotsLayer.appendChild(pinnedDot);
-    pinnedDot.setAttribute("fill", "#7c3aed");
-    pinnedDot.setAttribute("opacity", "1");
-    hideHoverTooltip();
-    pinnedTooltip.textContent = pinnedDot.dataset.tooltip;
-    pinnedTooltip.style.display = "block";
-    positionTooltip(pinnedTooltip, event);
+    setPin(dot, event.clientX, event.clientY, true);
 }}
 
-function positionTooltip(tooltipEl, event) {{
+function setPin(dot, clientX, clientY, scrollTable) {{
+    if (pinnedDot && pinnedDot !== dot) restoreDot(pinnedDot);
+    markDotPinned(dot);
+    hideHoverTooltip();
+    pinnedTooltip.textContent = dot.dataset.tooltip;
+    pinnedTooltip.style.display = "block";
+    positionTooltip(pinnedTooltip, clientX, clientY);
+    highlightRow(dot.dataset.rank, scrollTable);
+}}
+
+function markDotPinned(dot) {{
+    pinnedDot = dot;
+    pinnedRank = dot.dataset.rank;
+    dotsLayer.appendChild(dot);
+    dot.setAttribute("fill", "#7c3aed");
+    dot.setAttribute("opacity", "1");
+}}
+
+function restoreDot(dot) {{
+    dot.setAttribute("fill", dot.dataset.baseColor);
+    dot.setAttribute("opacity", "0.62");
+}}
+
+function clearPin() {{
+    if (pinnedDot) restoreDot(pinnedDot);
+    pinnedDot = null;
+    pinnedRank = null;
+    hidePinnedTooltip();
+    highlightRow(null, false);
+}}
+
+function positionTooltip(tooltipEl, clientX, clientY) {{
     const pad = 14;
     const rect = tooltipEl.getBoundingClientRect();
-    let left = event.clientX + pad;
-    let top = event.clientY + pad;
-    if (left + rect.width > window.innerWidth) {{
-        left = event.clientX - rect.width - pad;
+    let posLeft = clientX + pad;
+    let posTop = clientY + pad;
+    if (posLeft + rect.width > window.innerWidth) {{
+        posLeft = clientX - rect.width - pad;
     }}
-    if (top + rect.height > window.innerHeight) {{
-        top = event.clientY - rect.height - pad;
+    if (posTop + rect.height > window.innerHeight) {{
+        posTop = clientY - rect.height - pad;
     }}
-    tooltipEl.style.left = Math.max(8, left) + "px";
-    tooltipEl.style.top = Math.max(8, top) + "px";
+    posLeft = Math.max(8, posLeft);
+    posTop = Math.max(8, posTop);
+    // The pinned tooltip is absolutely positioned, so anchor it to the document
+    // (page coordinates) — that keeps it next to its dot when the page scrolls.
+    // The hover tooltip is fixed and tracks the cursor, so it stays in viewport coords.
+    if (tooltipEl.style.position === "absolute" || tooltipEl.id === "pinned-tooltip") {{
+        posLeft += window.scrollX;
+        posTop += window.scrollY;
+    }}
+    tooltipEl.style.left = posLeft + "px";
+    tooltipEl.style.top = posTop + "px";
+}}
+
+function headerLabel(column) {{
+    const ticker = tickers.find((name) => column === `${{name}} Weight`);
+    return ticker !== undefined ? ticker : column;
+}}
+
+function compareValues(a, b) {{
+    const aMissing = a === null || a === undefined || a === "";
+    const bMissing = b === null || b === undefined || b === "";
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    return String(a).localeCompare(String(b));
+}}
+
+function columnRange(column) {{
+    const values = chartData
+        .map((row) => row[column])
+        .filter((value) => Number.isFinite(value));
+    if (!values.length) return null;
+    return [Math.min(...values), Math.max(...values)];
+}}
+
+// Loss-type metrics (drawdowns, worst periods, VaR) are stored as non-positive
+// numbers. Users think of them as positive magnitudes ("drawdown <= 60%"), so for
+// any column whose values are all <= 0 we filter on the absolute value.
+function isMagnitudeColumn(column) {{
+    const range = columnRange(column);
+    return range !== null && range[1] <= 0 && range[0] < 0;
+}}
+
+function updateFilterHint() {{
+    const column = filterColumn.value;
+    const range = columnRange(column);
+    if (!range) {{
+        filterHint.textContent = "";
+        filterValue.placeholder = "value";
+        return;
+    }}
+    const isPercent = percentColumns.has(column);
+    filterValue.placeholder = isPercent ? "%" : "value";
+    if (isMagnitudeColumn(column)) {{
+        const lo = formatTooltipValue(Math.min(Math.abs(range[0]), Math.abs(range[1])), column);
+        const hi = formatTooltipValue(Math.max(Math.abs(range[0]), Math.abs(range[1])), column);
+        filterHint.textContent = `magnitude ${{lo}} to ${{hi}}`
+            + (isPercent ? " (enter as %, e.g. 60)" : "");
+    }} else {{
+        filterHint.textContent = `range: ${{formatTooltipValue(range[0], column)}} to ${{formatTooltipValue(range[1], column)}}`
+            + (isPercent ? " (enter as %)" : "");
+    }}
+}}
+
+function addFilter() {{
+    const column = filterColumn.value;
+    const raw = Number(filterValue.value);
+    if (filterValue.value.trim() === "" || !Number.isFinite(raw)) return;
+    const magnitude = isMagnitudeColumn(column);
+    // Magnitude columns compare on |value|, so the stored threshold is always positive.
+    const scaled = magnitude ? Math.abs(raw) : raw;
+    // Inputs for percent columns are entered as percentages; data is stored as a fraction.
+    const value = percentColumns.has(column) ? scaled / 100 : scaled;
+    activeFilters.push({{ column, op: filterOp.value, value, magnitude }});
+    filterValue.value = "";
+    renderFilters();
+    renderTable();
+}}
+
+function renderFilters() {{
+    filterChips.innerHTML = "";
+    activeFilters.forEach((filter, index) => {{
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        const symbol = filter.op === "le" ? "≤" : "≥";
+        const label = document.createElement("span");
+        label.textContent = `${{filter.column}} ${{symbol}} ${{formatTooltipValue(filter.value, filter.column)}}`;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "×";
+        remove.title = "Remove filter";
+        remove.addEventListener("click", () => {{
+            activeFilters.splice(index, 1);
+            renderFilters();
+            renderTable();
+        }});
+        chip.appendChild(label);
+        chip.appendChild(remove);
+        filterChips.appendChild(chip);
+    }});
+}}
+
+function renderTable() {{
+    const columns = showAllCols.checked ? allColumns : coreColumns;
+    const query = tableFilter.value.trim().toLowerCase();
+    let rows = chartData;
+    if (query) {{
+        rows = rows.filter((row) =>
+            String(row.Portfolio || "").toLowerCase().includes(query));
+    }}
+    for (const filter of activeFilters) {{
+        rows = rows.filter((row) => {{
+            let value = row[filter.column];
+            if (!Number.isFinite(value)) return false;
+            if (filter.magnitude) value = Math.abs(value);
+            return filter.op === "le" ? value <= filter.value : value >= filter.value;
+        }});
+    }}
+    if (!columns.includes(sortColumn)) sortColumn = "Rank";
+    rows = rows.slice().sort((rowA, rowB) => {{
+        const result = compareValues(rowA[sortColumn], rowB[sortColumn]);
+        return sortAscending ? result : -result;
+    }});
+
+    tableHeadRow.innerHTML = "";
+    for (const column of columns) {{
+        const th = document.createElement("th");
+        const arrow = column === sortColumn ? (sortAscending ? " ▲" : " ▼") : "";
+        th.innerHTML = `${{headerLabel(column)}}<span class="arrow">${{arrow}}</span>`;
+        th.title = column;
+        th.addEventListener("click", () => {{
+            if (sortColumn === column) {{
+                sortAscending = !sortAscending;
+            }} else {{
+                sortColumn = column;
+                sortAscending = column === "Rank" || column === "Portfolio";
+            }}
+            renderTable();
+        }});
+        tableHeadRow.appendChild(th);
+    }}
+
+    tableBody.innerHTML = "";
+    for (const row of rows) {{
+        const tr = document.createElement("tr");
+        tr.dataset.rank = row.Rank;
+        if (String(row.Rank) === String(pinnedRank)) tr.classList.add("row-selected");
+        for (const column of columns) {{
+            const td = document.createElement("td");
+            td.textContent = column === "Portfolio"
+                ? (row.Portfolio || "")
+                : formatTooltipValue(row[column], column);
+            tr.appendChild(td);
+        }}
+        tr.addEventListener("click", () => onRowClick(row.Rank));
+        tableBody.appendChild(tr);
+    }}
+
+    rowCount.textContent = `Showing ${{rows.length.toLocaleString()}} of ${{chartData.length.toLocaleString()}} portfolios`;
+}}
+
+function onRowClick(rank) {{
+    const dot = dotsLayer.querySelector(`circle[data-rank="${{rank}}"]`);
+    if (dot) {{
+        const r = dot.getBoundingClientRect();
+        if (pinnedDot === dot) {{
+            clearPin();
+        }} else {{
+            setPin(dot, r.left + r.width / 2, r.top, false);
+        }}
+    }} else {{
+        // Portfolio is not plotted on the current axes; just toggle the row highlight.
+        highlightRow(String(rank) === String(pinnedRank) ? null : rank, false);
+        pinnedRank = String(rank) === String(pinnedRank) ? null : String(rank);
+    }}
+}}
+
+function highlightRow(rank, scrollIntoView) {{
+    for (const tr of tableBody.querySelectorAll("tr.row-selected")) {{
+        tr.classList.remove("row-selected");
+    }}
+    if (rank === null || rank === undefined) return;
+    const tr = tableBody.querySelector(`tr[data-rank="${{rank}}"]`);
+    if (tr) {{
+        tr.classList.add("row-selected");
+        if (scrollIntoView) tr.scrollIntoView({{ block: "nearest" }});
+    }}
 }}
 }})();
 </script>

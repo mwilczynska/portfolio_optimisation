@@ -1,5 +1,32 @@
 # Log
 
+## 2026-06-19 (UX polish)
+
+- Centred the scatter plot (`svg` now `display: block; margin: 0 auto`).
+- Confirmed the X/Y axis titles already update live with the dropdown selections (verified CAGR -> Final Value in-browser); no code change needed.
+- Fixed the pinned (click) tooltip drifting on scroll: changed `#pinned-tooltip` from `position: fixed` to `position: absolute` and anchored it in document/page coordinates (add `window.scrollX/scrollY` in `positionTooltip`). It now stays beside its dot when the page scrolls. The hover tooltip stays `fixed` and tracks the cursor.
+- Renamed the page `<title>`, the `<h1>`, and the SVG aria-label from "CAGR vs Max Drawdown" to "Portfolio Optimisation Results" (axes are user-selectable, so the old fixed title was misleading).
+
+## 2026-06-19 (later)
+
+- Added numeric range filtering to the HTML table: a filter builder (metric dropdown + ≥/≤ + value, with a live "range: …" hint) lets you add filters such as `Max Drawdown ≥ -65%`. Active filters show as removable chips, plus a "Clear all" button; filters combine with the text filter and update the row count. Percent columns are entered as percentages and converted to fractions internally.
+- Made the metric filter magnitude-aware for loss-type columns: any column whose values are all <= 0 (Max Drawdown, Average Drawdown, Worst Day/Month/Year, VaR/CVaR) now filters on the absolute value, so `Max Drawdown <= 60%` keeps drawdowns no deeper than 60% (the intuitive reading) instead of matching every row. The value is entered as a positive magnitude; the hint shows "magnitude X to Y (enter as %, e.g. 60)" and the chip shows the positive magnitude. Non-loss columns keep signed behaviour.
+- Reduced the scatter plot size: viewBox height 640 -> 560, and capped the rendered SVG at `max-width: 760px` so the chart no longer dominates the page above the table.
+- Verified live in-browser (served over `http://127.0.0.1`, since `file://` was mangled by the extension): the `Max Drawdown ≥ -65%` filter narrowed 969 -> 53 rows, all with drawdowns better than -65%.
+
+## 2026-06-19
+
+- Reviewed the rendered HTML chart (headless Chrome screenshot) for UX issues. Main weakness: the results table was a static top-10 with a verbose `Portfolio` label, no sorting/filtering, only 5 of ~25 metrics, and no link to the chart.
+- Replaced the static table in `write_interactive_scatter` with a dependency-free interactive table driven by the data already embedded for the chart:
+  - Sortable column headers (click to toggle asc/desc, arrow indicator).
+  - A text filter box that matches against the portfolio weight label, with a live "Showing X of N portfolios" count.
+  - Capped-height (460px) scroll area with a sticky header.
+  - Compact per-asset weight columns (headers show the ticker only) plus a core metric set; a "Show all columns" checkbox switches to every numeric column.
+  - Chart <-> table linking: clicking/pinning a dot highlights and scrolls to its row; clicking a row pins its dot. Pin state survives axis changes via the row Rank.
+- Refactored the pin/tooltip helpers (`setPin`/`clearPin`/`markDotPinned`/`restoreDot`, coordinate-based `positionTooltip`) so pinning can be triggered from either the chart or the table.
+- Removed the now-unused `html` import and the Python-side static table builder.
+- Regenerated `output/cagr_vs_max_drawdown.html` from the existing 969-row results CSV (HTML is a pure function of the CSV, so the simulation was not re-run).
+
 ## 2026-06-17
 
 - Read `PLAN.md`.

@@ -32,6 +32,15 @@ Expected outputs:
   - Clicking a dot pins a separate tooltip, turns the dot solid purple, and moves it to the foreground.
   - Clicking the same purple dot again clears the pinned tooltip and restores the dot.
   - Tooltip text suppresses duplicate core metrics already displayed by the selected axes.
+- The results table below the chart is now a full interactive table (not a static top-10):
+  - Sortable headers, a text filter, a sticky-header scroll area, and a live row count.
+  - Defaults to a core column set (Rank, per-asset weights, CAGR, Max Drawdown, Sharpe, Sortino, Calmar, Ulcer Index, Final Value); the "Show all columns" checkbox switches to every numeric column.
+  - It reads the same embedded `chartData` as the chart, so no extra data is written; the whole HTML is still a pure function of the results CSV (regenerate via `write_interactive_scatter` without re-running the simulation).
+  - Chart and table are linked by row `Rank`: pinning a dot highlights/scrolls to its row and vice versa.
+  - Numeric range filters: a filter builder adds constraints like `Max Drawdown <= 60%` (shown as removable chips, combinable, "Clear all" to reset). Percent columns are typed as percentages and stored as fractions.
+  - Loss-type columns (all values <= 0: drawdowns, worst periods, VaR/CVaR) are magnitude-aware via `isMagnitudeColumn` — the user enters a positive magnitude and the filter compares on `|value|`, so `Max Drawdown <= 60%` keeps drawdowns shallower than 60%. The hint reads "magnitude X to Y". Other columns use signed comparison.
+  - The scatter SVG is intentionally compact (viewBox 1100x560, capped at `max-width: 760px`) so the table stays visible.
+  - To regenerate just the HTML from an existing CSV: `import portfolio_optimizer as po; po.write_interactive_scatter(pd.read_csv(csv), po.asset_list, html_path)`.
 
 ## Follow-Up Ideas
 
