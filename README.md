@@ -8,6 +8,14 @@ The point is to see the whole trade-off surface at once rather than a single "op
 Every blend is a dot, so you can look at what growth actually costs in drawdown, where the
 diminishing returns start, and how wide the band of near-equivalent portfolios really is.
 
+![The generated chart: 1,771 portfolios plotted as CAGR against max drawdown, with one dot pinned to show its weights and statistics](docs/chart.png)
+
+Above: every 5% blend of four assets over 1970 to 2026. The pinned dot is the shallow-drawdown
+corner, 20/60/15/5 across stocks, bonds, gold and commodities, which gave up about two points of
+CAGR against the best blends but fell only 21% at its worst instead of 40%+. The curved upper edge
+is the frontier, and the width of the cloud beneath it shows how many quite different recipes land
+in much the same place.
+
 ```
 pip install pandas numpy
 python portfolio_optimizer.py
@@ -20,8 +28,9 @@ Outputs land in `output/`:
 | `portfolio_optimisation_results.csv` | Every portfolio tested, ranked, with all metrics |
 | `portfolio_optimisation_results.html` | Interactive chart and table, no dependencies, no server needed |
 
-A generated example of both is committed to this repo. Download the HTML and open it locally;
-GitHub will not render it in the browser.
+A generated example of both is committed to this repo. The screenshot above is a still of that
+page; download the HTML and open it locally to get the interactive version, since GitHub will not
+render it in the browser.
 
 ## Data
 
