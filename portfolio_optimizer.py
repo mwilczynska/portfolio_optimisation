@@ -6,7 +6,7 @@ USLCAP3x, LTT3x, ITT3x, GOLDPM2x, COMM
 
 Outputs:
     output/portfolio_optimisation_results.csv
-    output/cagr_vs_max_drawdown.html
+    output/portfolio_optimisation_results.html
 
 Edit the USER CONFIG section below, then run:
     python portfolio_optimizer.py
@@ -28,26 +28,44 @@ starting_value = 100000
 start_date, end_date = "1970-01-01", "2026-12-31"
 rebalance_annually = True
 
-asset_list = ["USLCAP3x", "LTT3x", "ITT3x", "GOLDPM2x", "COMM"]
+# asset_list = ["USLCAP3x", "LTT3x", "ITT3x", "GOLDPM2x", "COMM"]
+
+# Un-levered All Weather asset list
+asset_list = ["GLSTOCK", "GLBOND", "GOLDPM", "COMM"]
 # weight_step = 0.20  # quick test grid
 weight_step = 0.05  # full grid; uncomment for the 5% increment run
 
 # Optional minimum floors and maximum roofs for each asset.
 # Values are decimals: 0.10 means 10%. Leave at 0.00 / 1.00 for unrestricted.
+# min_weights = {
+#     "USLCAP3x": 0.00,
+#     "LTT3x": 0.00,
+#     "ITT3x": 0.00,
+#     "GOLDPM2x": 0.00,
+#     "COMM": 0.00,
+# }
+
+# max_weights = {
+#     "USLCAP3x": 1.00,
+#     "LTT3x": 1.00,
+#     "ITT3x": 1.00,
+#     "GOLDPM2x": 1.00,
+#     "COMM": 1.00,
+# }
+
+# Un-levered All Weather assets
 min_weights = {
-    "USLCAP3x": 0.00,
-    "LTT3x": 0.00,
-    "ITT3x": 0.00,
-    "GOLDPM2x": 0.20,
+    "GOLDPM": 0.00,
     "COMM": 0.00,
+    "GLSTOCK": 0.00,
+    "GLBOND": 0.00,
 }
 
 max_weights = {
-    "USLCAP3x": 1.00,
-    "LTT3x": 1.00,
-    "ITT3x": 1.00,
-    "GOLDPM2x": 1.00,
+    "GOLDPM": 1.00,
     "COMM": 1.00,
+    "GLSTOCK": 1.00,
+    "GLBOND": 1.00,
 }
 
 # Optional drawdown filter. Example: -0.60 keeps portfolios with max drawdown
@@ -68,29 +86,46 @@ portfolio_chunk_size = 500
 # --------------------------------------------------------------------------
 # 2) Local dataset configuration
 # --------------------------------------------------------------------------
+DATA_ROOT = Path(__file__).resolve().parent.parent / "financial_datasets" / "data" / "processed"
+
 CUSTOM_DATASETS = {
     "USLCAP3x": {
-        "path": Path(r"C:\Datascience\projects\finance\financial_datasets\data\processed\us_large_cap_3x_sp500.csv"),
+        "path": DATA_ROOT / "us_large_cap_3x_sp500.csv",
         "date_col": "Date",
         "price_col": "Adj Close",
     },
     "LTT3x": {
-        "path": Path(r"C:\Datascience\projects\finance\financial_datasets\data\processed\long_term_us_treasury_3x.csv"),
+        "path": DATA_ROOT / "long_term_us_treasury_3x.csv",
         "date_col": "Date",
         "price_col": "Adj Close",
     },
     "ITT3x": {
-        "path": Path(r"C:\Datascience\projects\finance\financial_datasets\data\processed\intermediate_term_us_treasury_3x.csv"),
+        "path": DATA_ROOT / "intermediate_term_us_treasury_3x.csv",
         "date_col": "Date",
         "price_col": "Adj Close",
     },
     "GOLDPM2x": {
-        "path": Path(r"C:\Datascience\projects\finance\financial_datasets\data\processed\gold_2x.csv"),
+        "path": DATA_ROOT / "gold_2x.csv",
+        "date_col": "Date",
+        "price_col": "Adj Close",
+    },
+    "GOLDPM": {
+        "path": DATA_ROOT / "gold.csv",
         "date_col": "Date",
         "price_col": "Adj Close",
     },
     "COMM": {
-        "path": Path(r"C:\Datascience\projects\finance\financial_datasets\data\processed\broad_commodities.csv"),
+        "path": DATA_ROOT / "broad_commodities.csv",
+        "date_col": "Date",
+        "price_col": "Adj Close",
+    },
+    "GLSTOCK": {
+        "path": DATA_ROOT / "global_stocks.csv",
+        "date_col": "Date",
+        "price_col": "Adj Close",
+    },
+    "GLBOND": {
+        "path": DATA_ROOT / "global_bonds.csv",
         "date_col": "Date",
         "price_col": "Adj Close",
     },
@@ -278,7 +313,308 @@ def format_existing_script_syntax(row, tickers):
     return f"tickers, weights = {tickers_text},{weights_text}"
 
 
-def write_interactive_scatter(results, tickers, path):
+# Plain-language descriptions of the building-block assets, used by the public
+# "About" section. Facts are sourced from the dataset methodology docs in the
+# companion repository: https://github.com/mwilczynska/financial_datasets
+#
+# Every series runs from 1970-01-02. Only the most recent stretch of each one is
+# a real fund; everything earlier is reconstructed from index data and documented
+# models. The copy below has to make that obvious, so ``coverage`` always states
+# the full span alongside the fund handover date.
+#
+# Each entry carries:
+#   name     - short human name
+#   detail   - what the exposure actually is
+#   coverage - the span the series covers, and when the real fund takes over
+#   history  - how the pre-fund history was built, in chronological order
+#   caveat   - the limitation a reader should know about
+#   levered  - whether the series is a daily-reset leveraged model
+#
+# Unknown tickers degrade gracefully via ``asset_info`` below.
+ASSET_INFO = {
+    "GLSTOCK": {
+        "name": "Global stocks",
+        "detail": "all-world equities in USD with dividends reinvested, similar to VT or MSCI ACWI",
+        "coverage": "1970 to today, with VT's own returns from 2008-06-27",
+        "history": "From 1970 to 1989 the series is a U.S. large-cap daily path, rescaled so that each "
+                   "calendar year matches MSCI World's published annual return. The first half of 1990 stays "
+                   "a plain U.S. proxy, Fama-French developed-market daily returns then run to mid-2008, and "
+                   "VT's own returns take over from 2008-06-27.",
+        "caveat": "Anything before 1990 is a U.S. proxy shaped to global annual returns rather than real "
+                  "daily global history. The 1990 to 2008 stretch covers developed markets only, so emerging "
+                  "markets enter just once VT takes over.",
+        "levered": False,
+    },
+    "GLBOND": {
+        "name": "Global government bonds",
+        "detail": "issued by governments around the world, held in USD with currency swings left in rather "
+                  "than hedged away",
+        "coverage": "1970 to today, with a BND / BWX fund blend from 2007-10-12",
+        "history": "Everything up to 2007 is reconstructed. The Jorda-Schularick-Taylor macrohistory database "
+                   "sets each year's return for a GDP-weighted basket of 16 advanced-economy government bond "
+                   "markets, and the path within each year comes from BIS daily exchange rates plus government "
+                   "bond yields: daily yields for the U.S., Japan and the U.K., together about 62% of the "
+                   "basket from 1979, and monthly yields for everywhere else. A 45% BND / 55% BWX blend, "
+                   "rebalanced daily, takes over from 2007-10-12.",
+        "caveat": "The reconstructed era covers government bonds in advanced economies only, with no corporate, "
+                  "emerging-market or inflation-linked debt. Outside the U.S., Japan and the U.K. its daily "
+                  "moves are interpolated from monthly readings, so short-term wobbles are smoother than they "
+                  "really were.",
+        "levered": False,
+    },
+    "GOLDPM": {
+        "name": "Gold",
+        "detail": "bullion measured as a total return that already carries fund fees, similar to GLD",
+        "coverage": "1970 to today, with GLD's own returns from 2004-11-18",
+        "history": "From 1970 until GLD launched, the series is the London afternoon gold price less GLD's "
+                   "0.40% a year expense drag, so the whole history is priced the way someone holding the fund "
+                   "would have experienced it. GLD's own returns take over from 2004-11-18.",
+        "caveat": "Prices before 2004 are struck at the London afternoon fix, around 10am in New York, rather "
+                  "than at the U.S. close. That loosens day-to-day alignment with U.S.-listed assets, though it "
+                  "does not affect the long-run path.",
+        "levered": False,
+    },
+    "COMM": {
+        "name": "Broad commodities",
+        "detail": "a diversified basket of commodity futures spanning energy, metals and agriculture, "
+                  "including roll yield and Treasury-bill collateral, similar to DBC",
+        "coverage": "1970 to today, with DBC's own returns from 2006-02-07",
+        "history": "From 1970 to 1991 the series is anchored to S&amp;P GSCI total-return data, interpolated "
+                   "between roughly bi-monthly readings until 1984 and then laid over daily GSCI spot movements. "
+                   "The Bloomberg Commodity excess-return index plus Treasury-bill collateral covers 1991 to "
+                   "2006, and DBC's own returns take over from 2006-02-07.",
+        "caveat": "This is the patchiest series on the page. It changes benchmark twice, in 1991 and again in "
+                  "2006, so it should not be read as one continuously observed index running back to 1970. Its "
+                  "daily swings before 1984 are also smoothed by interpolation.",
+        "levered": False,
+    },
+    "USLCAP3x": {
+        "name": "3x U.S. large-cap stocks",
+        "detail": "three times the daily move of the S&amp;P 500 total return, reset every day, similar to UPRO",
+        "coverage": "1970 to today, with UPRO's own returns from 2009-06-25",
+        "history": "From 1970 until UPRO launched, the series is modelled as three times the daily index "
+                   "return, less borrowing costs (the Treasury-bill rate plus a 0.65% spread) and a 0.91% "
+                   "annual expense ratio. Measured against UPRO's live record, the model matches its daily "
+                   "returns with a correlation of 0.998. UPRO's own returns take over from 2009-06-25.",
+        "caveat": "Because the leverage resets daily, this is not the same thing as 3x the S&amp;P 500 over the "
+                  "period. Choppy markets erode it. Before 1988 the underlying index is a broad large-cap proxy "
+                  "rather than the official S&amp;P 500 total return.",
+        "levered": True,
+    },
+    "LTT3x": {
+        "name": "3x long-term Treasuries",
+        "detail": "three times the daily move of 20+ year U.S. Treasuries, reset every day, similar to TMF",
+        "coverage": "1970 to today, with TMF's own returns from 2009-04-16",
+        "history": "From 1970 until TMF launched, the series is modelled as three times the daily bond return, "
+                   "less borrowing costs (the Treasury-bill rate plus a 0.53% spread) and a 1.06% annual "
+                   "expense ratio, matching TMF's daily returns with a correlation of 0.997. TMF's own returns "
+                   "take over from 2009-04-16.",
+        "caveat": "The underlying bond history only matches TMF's 20+ year benchmark from 2002; earlier years "
+                  "use a 25-year constant-maturity model. Decay bites hard here. Through the rising rates of "
+                  "2009 to 2026, TMF lost far more than long Treasuries themselves did.",
+        "levered": True,
+    },
+    "ITT3x": {
+        "name": "3x intermediate Treasuries",
+        "detail": "three times the daily move of 7 to 10 year U.S. Treasuries, reset every day, similar to TYD",
+        "coverage": "1970 to today, with TYD's own returns from 2009-04-16",
+        "history": "From 1970 until TYD launched, the series is modelled as three times the daily bond return, "
+                   "less borrowing costs (the Treasury-bill rate plus a 0.19% spread, which partly reflects "
+                   "TYD's fee waivers) and a 1.09% annual expense ratio. TYD's own returns take over from "
+                   "2009-04-16.",
+        "caveat": "TYD is small and thinly traded, and its published prices go stale between 2014 and 2018, so "
+                  "day-to-day agreement with the model is poor across those years. That is a problem with the "
+                  "fund's market data rather than with the model. Before 2002 the underlying is an 8.5-year par "
+                  "bond model.",
+        "levered": True,
+    },
+    "GOLDPM2x": {
+        "name": "2x gold",
+        "detail": "twice the daily move of gold, reset every day, similar to UGL",
+        "coverage": "1970 to today, with UGL's own returns from 2008-12-03",
+        "history": "From 1970 until UGL launched, the series is modelled as twice the daily spot gold return, "
+                   "less borrowing costs (the Treasury-bill rate plus a 0.93% spread) and a 0.95% annual "
+                   "expense ratio. UGL's own returns take over from 2008-12-03.",
+        "caveat": "The model prices gold at the London afternoon fix while UGL closes at 4pm in New York, so "
+                  "daily agreement is loose (a correlation of about 0.67) even though cumulative growth tracks "
+                  "closely. UGL also benchmarks a futures index rather than spot bullion.",
+        "levered": True,
+    },
+}
+
+
+def asset_info(ticker):
+    """Return the description record for ``ticker``, or a neutral placeholder."""
+    return ASSET_INFO.get(ticker) or {
+        "name": ticker,
+        "detail": "a building-block asset in this backtest",
+        "coverage": "",
+        "history": "",
+        "caveat": "",
+        "levered": False,
+    }
+
+
+def build_about_html(tickers, n_portfolios, meta):
+    """Build the public-facing 'About this chart' section as an HTML string.
+
+    ``meta`` is an optional dict describing the run (period, rebalancing,
+    weight step, starting value, weight constraints). Missing values degrade
+    gracefully so the section is still readable when called without it.
+
+    The wording adapts to whichever assets were actually run: the leverage
+    material only appears when a leveraged series is in the mix, and the
+    caveats are assembled from the per-asset records in ``ASSET_INFO``.
+    """
+    meta = meta or {}
+    period_start = meta.get("period_start")
+    period_end = meta.get("period_end")
+    trading_days = meta.get("trading_days")
+    years = meta.get("years")
+    weight_step = meta.get("weight_step")
+    starting_value = meta.get("starting_value")
+    rebalance_annually = meta.get("rebalance_annually", True)
+
+    period = f"{period_start} to {period_end}" if period_start and period_end else "the full available history"
+    years_text = f", about {years:.0f} years of daily data" if years else ""
+    step_text = f"{weight_step:.0%}" if weight_step else "fixed"
+    start_value_text = f"${starting_value:,.0f}" if starting_value else "a fixed starting amount"
+    rebalance_text = (
+        "rebalanced back to its target mix once a year"
+        if rebalance_annually
+        else "bought once and held for the whole period without rebalancing"
+    )
+    days_text = f"{trading_days:,}" if trading_days else "many"
+
+    infos = [(ticker, asset_info(ticker)) for ticker in tickers]
+    has_leverage = any(info["levered"] for _, info in infos)
+
+    # Building blocks. The third column states the full span each series covers,
+    # so nobody reads the fund handover date as the start of the data.
+    block_rows = "".join(
+        f"<tr><td><code>{ticker}</code></td><td><strong>{info['name']}</strong>, {info['detail']}</td>"
+        f"<td>{info['coverage'] or 'n/a'}</td></tr>"
+        for ticker, info in infos
+    )
+    blocks_table = (
+        "<table class=\"asset-table\">"
+        "<thead><tr><th>Code</th><th>What it is</th><th>Series covers</th></tr></thead>"
+        f"<tbody>{block_rows}</tbody></table>"
+    )
+
+    # Per-asset provenance, so the reconstructed portions of each history are explicit.
+    history_items = "".join(
+        f"<li><strong>{ticker}</strong>: {info['history']}</li>"
+        for ticker, info in infos
+        if info["history"]
+    )
+    history_html = (
+        "<h3>Where each building block comes from</h3>"
+        "<p>Every series runs from 1970, but no real fund goes back that far. The further back you go, the "
+        "more of the data is reconstructed rather than observed. Here is what each one is made of:</p>"
+        f"<ul>{history_items}</ul>"
+    ) if history_items else ""
+
+    if has_leverage:
+        construction_html = (
+            "<p>Every building block runs from 1970 to today, but only the most recent stretch of each one is "
+            "a real fund. The 2x and 3x blocks are daily-reset models of exchange-traded funds such as UPRO, "
+            "TMF, TYD and UGL, and they already carry the costs that make leverage expensive in practice: the "
+            "daily interest on borrowed money, the fund's own fees, and the decay that comes from resetting the "
+            "leverage every single day. From each fund's launch, around 2008 to 2009, the series switches to "
+            "that fund's own returns.</p>"
+        )
+    else:
+        construction_html = (
+            "<p>Every building block runs from 1970 to today, but only the most recent stretch of each one is "
+            "a real fund. Before that the series is extended backwards using published index data and, where no "
+            "index reaches far enough, a documented model. So the recent decades are observed history and the "
+            "earlier decades are reconstructions.</p>"
+        )
+
+    # Human-readable weight constraints (only if any floor/roof is non-trivial).
+    constraint_bits = []
+    for ticker in tickers:
+        floor = (meta.get("min_weights") or {}).get(ticker, 0.0)
+        roof = (meta.get("max_weights") or {}).get(ticker, 1.0)
+        if floor and floor > 0:
+            constraint_bits.append(f"{ticker} at least {floor:.0%}")
+        if roof is not None and roof < 1.0:
+            constraint_bits.append(f"{ticker} at most {roof:.0%}")
+    constraints_html = (
+        f"<p><strong>Limits applied to this run:</strong> {', '.join(constraint_bits)}.</p>"
+        if constraint_bits else ""
+    )
+
+    # Caveats: the universal ones, then anything specific to the assets in play.
+    caveats = [
+        "<strong>This is not investment advice.</strong> It is an educational illustration, not a recommendation "
+        "to buy or sell anything.",
+        "<strong>Past results do not predict future returns.</strong> A blend that looked good in history can do "
+        "badly from here.",
+        "<strong>Hindsight is baked in.</strong> Picking the best-scoring dot means picking whatever happened to "
+        "suit the past, using information nobody had at the time.",
+        "<strong>The early decades are reconstructed, not observed.</strong> No real fund covers this period, so "
+        "the further back the backtest runs, the more it rests on models. The section above says which parts, "
+        "for which asset.",
+    ]
+    if has_leverage:
+        caveats.append(
+            "<strong>Leverage is risky.</strong> The 2x and 3x blocks can fall very fast. Many blends on this page "
+            "show drawdowns worse than 80%, which few people could hold through in real time."
+        )
+    caveats.append(
+        "<strong>Real-world costs are missing.</strong> Taxes, commissions, bid/ask spreads and the practical "
+        "friction of rebalancing are not modelled. Fees charged inside the funds themselves are included."
+    )
+    for ticker, info in infos:
+        if info["caveat"]:
+            caveats.append(f"<strong>{ticker}.</strong> {info['caveat']}")
+    caveats_html = "".join(f"<li>{item}</li>" for item in caveats)
+
+    return f"""<section class="about">
+<h2>About this chart</h2>
+
+<h3>What it shows</h3>
+<p>Every dot is one portfolio: a fixed recipe for splitting a pot of money across
+{len(tickers)} building-block investments. This page tested <strong>{n_portfolios:,} recipes</strong>, which is
+every blend in {step_text} steps that adds up to 100%, and plots how each one would have behaved over
+{period}{years_text}. The dropdowns above the chart control what the axes measure, so you can compare any two
+results against each other.</p>
+<p>The building blocks are:</p>
+{blocks_table}
+
+<h3>How to use it</h3>
+<ul>
+<li>Pick what each axis measures with the <strong>X Axis</strong> and <strong>Y Axis</strong> dropdowns.</li>
+<li><strong>Hover</strong> a dot to see that portfolio's mix and headline numbers. <strong>Click</strong> it to pin the label in place, and click again to unpin.</li>
+<li>The <strong>Highlight</strong> dropdown colours every dot past a threshold you choose, which makes it easy to see, say, which blends fell further than 60% at their worst.</li>
+<li>The table below lists every portfolio tested. Click a column heading to sort by it, type in the filter box to search the weights, or add precise metric filters such as &ldquo;Max Drawdown at most 60%&rdquo;. Clicking a table row pins its dot on the chart, and clicking a dot highlights its row.</li>
+</ul>
+
+<h3>How the numbers were worked out</h3>
+<p>These results are a backtest, meaning a simulation of how each blend would have performed had it existed.
+It runs on {days_text} days of daily price history covering {period}. Every portfolio starts at {start_value_text}
+and is {rebalance_text}. Daily returns are then compounded to trace its value over time, and every statistic in
+the table is measured from that path. CAGR is the annual growth rate that would take the starting pot to the
+finishing one, and max drawdown is the worst peak-to-trough fall along the way.</p>
+{construction_html}
+{constraints_html}
+{history_html}
+
+<h3>What to watch out for</h3>
+<ul>
+{caveats_html}
+</ul>
+
+<p class="about-foot">Backtest period {period}. {days_text} trading days, {n_portfolios:,} portfolios tested.
+Built by <code>portfolio_optimizer.py</code> from the daily datasets in
+<a href="https://github.com/mwilczynska/financial_datasets">mwilczynska/financial_datasets</a>, where the full
+methodology for every series is documented.</p>
+</section>"""
+
+
+def write_interactive_scatter(results, tickers, path, meta=None):
     """Write a dependency-free HTML/SVG scatter with selectable axes."""
     width, height = 1100, 560
     left, right, top, bottom = 90, 40, 35, 90
@@ -303,6 +639,7 @@ def write_interactive_scatter(results, tickers, path):
     percent_column_data = json.dumps(percent_columns)
     weight_column_data = json.dumps([f"{ticker} Weight" for ticker in tickers])
     ticker_data = json.dumps(list(tickers))
+    about_section = build_about_html(tickers, len(results), meta)
 
     doc = f"""<!doctype html>
 <html lang="en">
@@ -410,6 +747,35 @@ circle:hover {{ opacity: 1; }}
     font-size: 12px;
 }}
 .chip button:hover {{ background: #a5b4fc; }}
+.about {{ max-width: 820px; margin: 36px auto 8px; color: #1f2937; line-height: 1.6; }}
+.about h2 {{ font-size: 20px; margin: 0 0 6px; }}
+.about h3 {{ font-size: 15px; margin: 22px 0 6px; color: #111827; }}
+.about p {{ margin: 0 0 12px; color: #374151; }}
+.about ul {{ margin: 0 0 12px; padding-left: 22px; }}
+.about li {{ margin: 0 0 6px; color: #374151; }}
+.about code {{ background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-size: 13px; }}
+.about .about-foot {{ font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 18px; }}
+.about a {{ color: #4338ca; }}
+.about .asset-table {{ width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 14px; }}
+.about .asset-table th, .about .asset-table td {{
+    border-bottom: 1px solid #e5e7eb;
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+}}
+.about .asset-table th {{
+    background: #f9fafb;
+    color: #374151;
+    font-weight: 600;
+    position: static;
+    cursor: default;
+}}
+.about .asset-table th:hover {{ background: #f9fafb; }}
+.about .asset-table td:first-child {{ white-space: nowrap; }}
+.about .asset-table tbody tr {{ cursor: default; }}
+.about .asset-table tbody tr:hover {{ background: transparent; }}
+.about .asset-table tbody tr:nth-child(even) {{ background: #fafafa; }}
 #table-wrap {{ max-height: 460px; overflow: auto; border: 1px solid #d1d5db; border-radius: 6px; }}
 table {{ border-collapse: collapse; font-size: 13px; width: 100%; }}
 th, td {{ border-bottom: 1px solid #e5e7eb; padding: 7px 10px; text-align: right; white-space: nowrap; }}
@@ -458,7 +824,7 @@ tbody tr.row-selected, tbody tr.row-selected:hover {{ background: #ede9fe; box-s
 <text id="y-axis-label" x="22" y="{top + plot_h / 2:.0f}" transform="rotate(-90 22 {top + plot_h / 2:.0f})" text-anchor="middle">CAGR</text>
 </svg>
 <div class="table-controls">
-    <input type="text" id="table-filter" placeholder="Filter portfolios… (e.g. GLD, 60%)" autocomplete="off">
+    <input type="text" id="table-filter" placeholder="Filter portfolios… (e.g. 60%)" autocomplete="off">
     <span class="toggle"><input type="checkbox" id="show-all-cols"><label for="show-all-cols">Show all columns</label></span>
     <span id="row-count"></span>
 </div>
@@ -481,6 +847,7 @@ tbody tr.row-selected, tbody tr.row-selected:hover {{ background: #ede9fe; box-s
 <tbody id="table-body"></tbody>
 </table>
 </div>
+{about_section}
 <script>
 (() => {{
 const chartData = {chart_data};
@@ -1025,9 +1392,20 @@ def main():
     results["Existing Script Syntax"] = results.apply(lambda row: format_existing_script_syntax(row, asset_list), axis=1)
 
     csv_path = output_dir / "portfolio_optimisation_results.csv"
-    html_path = output_dir / "cagr_vs_max_drawdown.html"
+    html_path = output_dir / "portfolio_optimisation_results.html"
     results.to_csv(csv_path, index=False)
-    write_interactive_scatter(results, asset_list, html_path)
+    meta = {
+        "period_start": str(dates[0].date()),
+        "period_end": str(dates[-1].date()),
+        "trading_days": len(dates),
+        "years": (dates[-1] - dates[0]).days / 365.25,
+        "weight_step": weight_step,
+        "starting_value": starting_value,
+        "rebalance_annually": rebalance_annually,
+        "min_weights": min_weights,
+        "max_weights": max_weights,
+    }
+    write_interactive_scatter(results, asset_list, html_path, meta=meta)
 
     display_cols = ["Rank", "Portfolio", "CAGR", "Std Dev", "Sharpe", "Max Drawdown", "Ulcer Index", "Final Value"]
     print("\nTop portfolios:")
