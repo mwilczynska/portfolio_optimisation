@@ -5,6 +5,8 @@ __pycache__/
 PLAN.md
 LOG.md
 HANDOVER.md
+AGENTS.md
+CLAUDE.md
 
 # Scenario runs stay local; only the committed demo pair is tracked.
 output/*
