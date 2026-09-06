@@ -1,0 +1,5 @@
+# Keep generated artefacts out of GitHub's language statistics, so the repository
+# reads as Python rather than HTML. The 1.9MB generated results page otherwise
+# outweighs the 61KB script by byte count.
+output/** linguist-generated=true
+docs/**   linguist-documentation=true
