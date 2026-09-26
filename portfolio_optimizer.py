@@ -589,7 +589,7 @@ results against each other.</p>
 <li>Pick what each axis measures with the <strong>X Axis</strong> and <strong>Y Axis</strong> dropdowns.</li>
 <li><strong>Hover</strong> a dot to see that portfolio's mix and headline numbers. <strong>Click</strong> it to pin the label in place, and click again to unpin.</li>
 <li>The <strong>Highlight</strong> dropdown colours every dot past a threshold you choose, which makes it easy to see, say, which blends fell further than 60% at their worst.</li>
-<li>The table below lists every portfolio tested. Click a column heading to sort by it, type in the filter box to search the weights, or add precise metric filters such as &ldquo;Max Drawdown at most 60%&rdquo;. Clicking a table row pins its dot on the chart, and clicking a dot highlights its row.</li>
+<li>The table below lists every portfolio tested. Click a column heading to sort by it, type in the filter box to search the weights, or add precise metric filters such as &ldquo;Max Drawdown at most 60%&rdquo;. The same filters apply to the chart. Clicking a table row pins its dot on the chart, and clicking a dot highlights its row.</li>
 </ul>
 
 <h3>How the numbers were worked out</h3>
@@ -597,7 +597,7 @@ results against each other.</p>
 It runs on {days_text} days of daily price history covering {period}. Every portfolio starts at {start_value_text}
 and is {rebalance_text}. Daily returns are then compounded to trace its value over time, and every statistic in
 the table is measured from that path. CAGR is the annual growth rate that would take the starting pot to the
-finishing one, and max drawdown is the worst peak-to-trough fall along the way.</p>
+finishing one, Std Dev is the annualised standard deviation of daily returns, and max drawdown is the worst peak-to-trough fall along the way.</p>
 {construction_html}
 {constraints_html}
 {history_html}
@@ -888,7 +888,7 @@ let pinnedRank = null;
 const activeFilters = [];
 
 const coreColumns = ["Rank"].concat(weightColumns,
-    ["CAGR", "Max Drawdown", "Sharpe", "Sortino", "Calmar", "Ulcer Index", "Final Value"]);
+    ["CAGR", "Std Dev", "Max Drawdown", "Sharpe", "Sortino", "Calmar", "Ulcer Index", "Final Value"]);
 const allColumns = ["Rank", "Portfolio"].concat(
     numericColumns.filter((column) => column !== "Rank"));
 let sortColumn = "Rank";
@@ -906,7 +906,7 @@ xSelect.addEventListener("change", () => {{
 }});
 ySelect.addEventListener("change", renderChart);
 thresholdSelect.addEventListener("change", renderChart);
-tableFilter.addEventListener("input", renderTable);
+tableFilter.addEventListener("input", renderFilteredResults);
 showAllCols.addEventListener("change", renderTable);
 
 numericColumns.forEach((column) => filterColumn.add(new Option(column, column)));
@@ -917,7 +917,7 @@ filterAdd.addEventListener("click", addFilter);
 filterClear.addEventListener("click", () => {{
     activeFilters.length = 0;
     renderFilters();
-    renderTable();
+    renderFilteredResults();
 }});
 updateFilterHint();
 
@@ -929,8 +929,21 @@ function renderChart() {{
     const xColumn = xSelect.value;
     const yColumn = ySelect.value;
     const xThreshold = thresholdSelect.value === "" ? null : Number(thresholdSelect.value);
-    const rows = chartData.filter((row) => Number.isFinite(row[xColumn]) && Number.isFinite(row[yColumn]));
-    if (!rows.length) return;
+    const rows = filteredRows().filter((row) => Number.isFinite(row[xColumn]) && Number.isFinite(row[yColumn]));
+
+    xAxisLabel.textContent = xColumn;
+    yAxisLabel.textContent = yColumn;
+    gridLayer.innerHTML = "";
+    dotsLayer.innerHTML = "";
+    pinnedDot = null;
+    hideHoverTooltip();
+    hidePinnedTooltip();
+    if (!rows.length) {{
+        pinnedRank = null;
+        highlightRow(null, false);
+        gridLayer.insertAdjacentHTML("beforeend", `<text x="${{left + plotW / 2}}" y="${{top + plotH / 2}}" text-anchor="middle" fill="#6b7280">No portfolios match the current filters</text>`);
+        return;
+    }}
 
     const xValues = rows.map((row) => row[xColumn]);
     const yValues = rows.map((row) => row[yColumn]);
@@ -940,14 +953,6 @@ function renderChart() {{
     const yTicks = makeTicks(yDomain[0], yDomain[1], 9);
     xDomain = [xTicks[0], xTicks[xTicks.length - 1]];
     yDomain = [yTicks[0], yTicks[yTicks.length - 1]];
-
-    xAxisLabel.textContent = xColumn;
-    yAxisLabel.textContent = yColumn;
-    gridLayer.innerHTML = "";
-    dotsLayer.innerHTML = "";
-    pinnedDot = null;
-    hideHoverTooltip();
-    hidePinnedTooltip();
 
     for (const tick of xTicks) {{
         const x = scaleX(tick, xDomain);
@@ -987,6 +992,8 @@ function renderChart() {{
             const r = dot.getBoundingClientRect();
             setPin(dot, r.left + r.width / 2, r.top, false);
         }} else {{
+            pinnedRank = null;
+            highlightRow(null, false);
             hidePinnedTooltip();
         }}
     }}
@@ -1233,7 +1240,7 @@ function addFilter() {{
     activeFilters.push({{ column, op: filterOp.value, value, magnitude }});
     filterValue.value = "";
     renderFilters();
-    renderTable();
+    renderFilteredResults();
 }}
 
 function renderFilters() {{
@@ -1251,7 +1258,7 @@ function renderFilters() {{
         remove.addEventListener("click", () => {{
             activeFilters.splice(index, 1);
             renderFilters();
-            renderTable();
+            renderFilteredResults();
         }});
         chip.appendChild(label);
         chip.appendChild(remove);
@@ -1259,8 +1266,7 @@ function renderFilters() {{
     }});
 }}
 
-function renderTable() {{
-    const columns = showAllCols.checked ? allColumns : coreColumns;
+function filteredRows() {{
     const query = tableFilter.value.trim().toLowerCase();
     let rows = chartData;
     if (query) {{
@@ -1275,6 +1281,17 @@ function renderTable() {{
             return filter.op === "le" ? value <= filter.value : value >= filter.value;
         }});
     }}
+    return rows;
+}}
+
+function renderFilteredResults() {{
+    renderChart();
+    renderTable();
+}}
+
+function renderTable() {{
+    const columns = showAllCols.checked ? allColumns : coreColumns;
+    let rows = filteredRows();
     if (!columns.includes(sortColumn)) sortColumn = "Rank";
     rows = rows.slice().sort((rowA, rowB) => {{
         const result = compareValues(rowA[sortColumn], rowB[sortColumn]);
